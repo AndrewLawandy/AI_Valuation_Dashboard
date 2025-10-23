@@ -17,6 +17,8 @@ st.markdown("""
 .css-1d391kg {background-color: #1A1D27;}
 .stTitle, .stText {color: #FAFAFA;}
 .stButton>button {background-color: #3B3F50; color: #FAFAFA;}
+h1 {margin-bottom: 0.2em;}
+h2 {margin-bottom: 0.1em;}
 </style>
 """, unsafe_allow_html=True)
 
@@ -38,7 +40,6 @@ portfolio_percent_invest = st.sidebar.slider("Portfolio % to Invest in Stocks", 
 def compute_technical_indicators(df):
     df["MA50"] = df["Close"].rolling(50).mean()
     df["MA200"] = df["Close"].rolling(200).mean()
-    
     delta = df["Close"].diff()
     up = delta.clip(lower=0)
     down = -1*delta.clip(upper=0)
@@ -46,7 +47,6 @@ def compute_technical_indicators(df):
     roll_down = down.rolling(14).mean()
     rs = roll_up / roll_down
     df["RSI"] = 100 - (100 / (1 + rs))
-    
     short_avg = df["Close"].ewm(span=12, adjust=False).mean()
     long_avg = df["Close"].ewm(span=26, adjust=False).mean()
     df["MACD"] = short_avg - long_avg
@@ -78,54 +78,42 @@ def compute_kelly(df, forecast):
 def fundamental_score(info):
     score = 0
     weights = {"PE":0.3, "PEG":0.2, "RevenueGrowth":0.25, "ROE":0.25}
-    
     pe = info.get("trailingPE")
     if pe and pe < 25: score += weights["PE"]
     elif pe and pe > 40: score -= weights["PE"]
-    
     peg = info.get("pegRatio")
     if peg and peg < 1: score += weights["PEG"]
-    
     rev_growth = info.get("revenueGrowth")
     if rev_growth and rev_growth > 0.1: score += weights["RevenueGrowth"]
-    
     roe = info.get("returnOnEquity")
     if roe and roe > 0.15: score += weights["ROE"]
-    
     return score
 
 def ai_score(df, info, kelly_f):
     score = 0
     weights = {"RSI":0.2, "MA":0.15, "P/E":0.15, "52w":0.1, "MACD":0.15, "Kelly":0.25}
-    
     rsi = df["RSI"].iloc[-1]
     if rsi < 30: score += 1*weights["RSI"]
     elif rsi > 70: score -= 1*weights["RSI"]
-    
     ma50 = df["MA50"].iloc[-1]
     ma200 = df["MA200"].iloc[-1]
     close = df["Close"].iloc[-1]
     if close > ma50 > ma200: score += 1*weights["MA"]
     elif close < ma50 < ma200: score -= 1*weights["MA"]
-    
     pe = info.get("trailingPE")
     if pe:
         if pe < 15: score += 1*weights["P/E"]
         elif pe > 25: score -= 1*weights["P/E"]
-    
     high_52 = info.get("fiftyTwoWeekHigh")
     low_52 = info.get("fiftyTwoWeekLow")
     if high_52 and close >= 0.9*high_52: score -= 1*weights["52w"]
     if low_52 and close <= 1.1*low_52: score += 1*weights["52w"]
-    
     macd = df["MACD"].iloc[-1]
     signal = df["Signal"].iloc[-1]
     if macd > signal: score += 1*weights["MACD"]
     elif macd < signal: score -= 1*weights["MACD"]
-    
     if kelly_f > 0.5: score += 1*weights["Kelly"]
     elif kelly_f < 0.1: score -= 1*weights["Kelly"]
-    
     return score
 
 def recommendation_from_score(score):
@@ -143,7 +131,7 @@ def compute_risk_indicator(df):
 
 # --- Fetch & Process Data ---
 if tickers:
-    data_dict, info_dict, ai_dict, forecast_dict, fund_dict, risk_dict, kelly_dict = {}, {}, {}, {}, {}, {}, {}
+    data_dict, info_dict, ai_dict, forecast_dict, fund_dict, risk_dict = {}, {}, {}, {}, {}, {}
     for ticker in tickers:
         try:
             stock = yf.Ticker(ticker)
@@ -175,26 +163,23 @@ if tickers:
         # --- Tab 1: Summary & Recommendations ---
         with tab1:
             st.subheader("Stock Recommendations")
-            left_col, right_col = st.columns([2,1])  # Pie chart bigger
+            left_col, right_col = st.columns([2,1])
             with left_col:
                 for t in tickers:
                     df = data_dict[t]
-                    info = info_dict[t]
                     rec_color = ai_dict[t]["color"]
                     rec_text = ai_dict[t]["rec"]
                     close = df["Close"].iloc[-1]
+                    st.markdown(f"<h2 style='color:white'>{t}</h2>", unsafe_allow_html=True)
+                    st.markdown(f"<h1 style='color:{rec_color}'>{rec_text}</h1>", unsafe_allow_html=True)
+                    st.metric(label=f"Current Price", value=f"${close:.2f}")
                     risk_color = risk_dict[t]["color"]
                     risk_text = risk_dict[t]["text"]
-                    fund_score_val = fund_dict[t]
-                    kelly_f = ai_dict[t]["kelly"]
-
-                    st.markdown(f"<h1 style='color:{rec_color}'>{rec_text}</h1>", unsafe_allow_html=True)
-                    st.metric(label=f"{t} Current Price", value=f"${close:.2f}")
                     st.markdown(f"**Risk:** <span style='color:{risk_color}'>{risk_text}</span>", unsafe_allow_html=True)
-                    st.caption(f"Fundamental Score: {fund_score_val:.2f} (0-1)")
-                    st.caption(f"Kelly Fraction: {kelly_f:.2f}")
+                    st.caption(f"Fundamental Score: {fund_dict[t]:.2f} (0-1)")
+                    st.caption(f"Kelly Fraction: {ai_dict[t]['kelly']:.2f}")
 
-            # --- Enlarged Portfolio Pie Chart with Dark Borders & Legend beside ---
+            # --- Pie Chart on Right ---
             with right_col:
                 st.subheader("Portfolio Allocation Guidance")
                 stocks = portfolio_percent_invest * risk_tolerance
@@ -203,41 +188,29 @@ if tickers:
                 cash = 100 - (stocks + bonds + mutual_funds)
                 pie_labels = ["Stocks", "Bonds", "Mutual Funds", "Cash"]
                 pie_values = [stocks, bonds, mutual_funds, cash]
-                pie_colors = ["#2ECC71", "#3498DB", "#E67E22", "#95A5A6"]
-
-                fig_pie = go.Figure(data=[go.Pie(
-                    labels=pie_labels,
-                    values=pie_values,
-                    marker=dict(colors=pie_colors, line=dict(color='black', width=3)),  # Darker borders
-                    textinfo='label+percent',
-                )])
-                fig_pie.update_layout(
-                    template='plotly_dark',
-                    height=700,
-                    legend=dict(
-                        orientation="v",
-                        yanchor="top",
-                        y=1,
-                        xanchor="left",
-                        x=1.05  # Pie chart directly beside legend
-                    ),
-                    margin=dict(t=50, b=0, l=0, r=0)
-                )
-                st.plotly_chart(fig_pie, use_container_width=True, key="global_pie_right")
+                pie_colors = ["#FF7F50","#808080","#3498DB","#2ECC71"]  # Stocks-orange, Bonds-grey, Mutual Funds-blue, Cash-green
+                fig_pie = go.Figure(data=[go.Pie(labels=pie_labels, values=pie_values, 
+                                                 marker=dict(colors=pie_colors, line=dict(color='black', width=2)))])
+                fig_pie.update_layout(template='plotly_dark', height=500,
+                                      legend=dict(orientation="v", y=0.5, x=1, font=dict(size=12)))
+                st.plotly_chart(fig_pie, use_container_width=True)
 
         # --- Tab 2: Price & Forecast ---
         with tab2:
-            st.subheader("Interactive Price Chart with Forecast")
+            st.subheader("Interactive Price Chart with Forecast & Support")
             for t in tickers:
                 df = data_dict[t]
                 future_dates, forecast = forecast_dict[t]
+                support_price = df['Close'].rolling(window=20).min().iloc[-1]  # 20-day support
                 fig = go.Figure()
-                fig.add_trace(go.Scatter(x=df.index, y=df["Close"], mode='lines', name=f"{t} Close"))
-                fig.add_trace(go.Scatter(x=df.index, y=df["MA50"], mode='lines', name=f"{t} 50-Day MA", line=dict(dash='dash')))
-                fig.add_trace(go.Scatter(x=df.index, y=df["MA200"], mode='lines', name=f"{t} 200-Day MA", line=dict(dash='dot')))
-                fig.add_trace(go.Scatter(x=future_dates, y=forecast, mode='lines', name=f"{t} Forecast", line=dict(color='magenta')))
-                fig.update_layout(template='plotly_dark', height=500, title=f"{t} Price & Forecast")
-                st.plotly_chart(fig, use_container_width=True, key=f"price_{t}")
+                fig.add_trace(go.Scatter(x=df.index, y=df["Close"], mode='lines', name=f"{t} Close", line=dict(color='white')))
+                fig.add_trace(go.Scatter(x=df.index, y=df["MA50"], mode='lines', name="50-Day MA", line=dict(dash='dash', color='yellow')))
+                fig.add_trace(go.Scatter(x=df.index, y=df["MA200"], mode='lines', name="200-Day MA", line=dict(dash='dot', color='orange')))
+                fig.add_trace(go.Scatter(x=future_dates, y=forecast, mode='lines', name="Forecast", line=dict(color='magenta')))
+                fig.add_trace(go.Scatter(x=[df.index[0], future_dates[-1]], y=[support_price, support_price], 
+                                         mode='lines', name='Support', line=dict(color='lime', dash='dot')))
+                fig.update_layout(template='plotly_dark', height=500, title=f"{t} Price, Forecast & Support")
+                st.plotly_chart(fig, use_container_width=True)
 
         # --- Tab 3: Technical Indicators ---
         with tab3:
@@ -248,9 +221,16 @@ if tickers:
                 col1, col2 = st.columns(2)
                 with col1:
                     st.line_chart(df["RSI"], use_container_width=True)
-                    st.caption("RSI indicates overbought (>70) or oversold (<30).")
-                    st.line_chart(df["MACD"], use_container_width=True)
-                    st.caption("MACD shows momentum. Above signal line = bullish.")
+                    st.caption("Relative Strength Index (RSI): overbought >70, oversold <30.")
                 with col2:
-                    st.line_chart(df["Signal"], use_container_width=True)
-                    st.caption("MACD Signal Line: used with MACD for buy/sell signals.")
+                    fig_macd = go.Figure()
+                    fig_macd.add_trace(go.Scatter(x=df.index, y=df["MACD"], mode='lines', name='MACD', line=dict(color='magenta')))
+                    fig_macd.add_trace(go.Scatter(x=df.index, y=df["Signal"], mode='lines', name='Signal', line=dict(color='cyan')))
+                    fig_macd.update_layout(template='plotly_dark', height=400,
+                                           title="MACD & Signal Line",
+                                           yaxis_title="Value",
+                                           xaxis_title="Date")
+                    st.plotly_chart(fig_macd, use_container_width=True)
+                    st.caption("MACD Signal Line: When MACD crosses above this line, it may indicate a buy; "
+                               "when it crosses below, it may indicate a sell. Bright colors improve visibility.")
+
