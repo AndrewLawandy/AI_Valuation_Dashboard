@@ -11,51 +11,50 @@ import math
 # --- Page Config ---
 st.set_page_config(page_title="AI Stock Valuation Dashboard", layout="wide", initial_sidebar_state="expanded")
 
-# --- Minimal CSS for card layout and visual polish ---
+# --- CSS / styling ---
 st.markdown(
     """
     <style>
-    /* App background */
     .stApp { background-color: #0E1117; color: #FAFAFA; }
-
-    /* Card */
     .stock-card {
-        background: linear-gradient(180deg, rgba(26,29,39,0.9), rgba(18,20,28,0.85));
+        background: linear-gradient(180deg, rgba(24,26,33,0.92), rgba(14,16,22,0.88));
         border: 1px solid rgba(255,255,255,0.04);
         border-radius: 12px;
-        padding: 16px;
-        margin-bottom: 16px;
-        box-shadow: 0 6px 18px rgba(0,0,0,0.5);
+        padding: 18px;
+        margin-bottom: 18px;
+        box-shadow: 0 6px 18px rgba(0,0,0,0.45);
     }
-    .stock-card h2 { margin: 0; font-size: 20px; line-height: 1; }
-    .stock-card .rec { font-size: 24px; font-weight:700; margin-top:6px; }
-    .metric-grid { display:flex; gap:12px; flex-wrap:wrap; margin-top:8px; }
-    .metric { min-width:120px; }
+    .stock-card h2 { margin: 0; font-size: 20px; font-weight:700; }
+    .rec-badge { font-size: 28px; font-weight:800; padding:6px 12px; border-radius:8px; display:inline-block; margin-top:6px; }
+    .risk-badge { font-weight:700; padding:4px 10px; border-radius:8px; display:inline-block; margin-left:8px; }
+    .metric-grid { display:flex; gap:12px; flex-wrap:wrap; margin-top:10px; }
+    .metric { min-width:120px; color:#E6EEF3; }
     .small-caption { color: #BFC9D9; font-size:12px; margin-top:6px; }
-
-    /* Sidebar larger labels */
-    .sidebar-heading { font-size:16px; font-weight:700; margin-bottom:6px; color:#FAFAFA; }
-    .sidebar-sub { color:#BFC9D9; margin-bottom:12px; font-size:13px; }
-
-    /* Make streamlit plots fit nicely inside cards */
-    .stPlotlyChart > div { border-radius: 8px; overflow: hidden; }
+    .analyst { font-size:16px; font-weight:700; color:#FFFFFF; margin-top:8px; }
+    .summary { margin-top:10px; color:#DDE7F2; font-weight:600; }
+    .bullets { margin-top:6px; color:#BFC9D9; margin-left:8px; }
+    .delta-up { color:#2ECC71; font-weight:700; }
+    .delta-down { color:#FF6B6B; font-weight:700; }
+    .kelly-label { font-weight:700; color:#FAFAFA; }
+    .indicator-label { color:#BFC9D9; font-size:13px; margin-top:6px; }
     </style>
     """,
     unsafe_allow_html=True,
 )
 
-# --- Sidebar (styled) ---
-st.sidebar.markdown("<div class='sidebar-heading'>🎯 Investment Strategy</div>", unsafe_allow_html=True)
-st.sidebar.markdown("<div class='sidebar-sub'>Set your time horizon and risk preference</div>", unsafe_allow_html=True)
+# --- Sidebar ---
+st.sidebar.markdown("<h3 style='color:#FAFAFA'>🎯 Investment Strategy</h3>", unsafe_allow_html=True)
+st.sidebar.markdown("<div style='color:#BFC9D9; margin-bottom:8px'>Set your time horizon and risk preference</div>", unsafe_allow_html=True)
 investment_horizon = st.sidebar.slider("Investment Horizon (days)", min_value=30, max_value=365, value=60, step=7)
 risk_tolerance = st.sidebar.slider("Risk Tolerance (0.1 = Low, 1 = High)", 0.1, 1.0, 0.5)
 portfolio_percent_invest = st.sidebar.slider("Portfolio % to invest in stocks", 0, 100, 70, step=5)
 st.sidebar.markdown("---")
-st.sidebar.markdown("<div class='sidebar-heading'>⚙️ Display</div>", unsafe_allow_html=True)
+st.sidebar.markdown("<h4 style='color:#FAFAFA'>⚙️ Display</h4>", unsafe_allow_html=True)
 show_analyst = st.sidebar.checkbox("Show analyst consensus (if available)", value=True)
+st.sidebar.markdown("<div style='color:#BFC9D9; font-size:13px'>Tip: increase Investment Horizon for longer-term forecasts.</div>", unsafe_allow_html=True)
 st.sidebar.markdown("---")
 
-# --- Title / input ---
+# --- Title & input ---
 st.title("AI Stock Valuation Dashboard")
 st.write("Enter stock tickers (comma-separated), e.g. `AAPL, TSLA, MSFT`")
 
@@ -112,7 +111,7 @@ def compute_kelly(df, forecast):
     return float(f)
 
 def fundamental_score(info):
-    score = 0
+    score = 0.0
     weights = {"PE":0.3, "PEG":0.2, "RevenueGrowth":0.25, "ROE":0.25}
     pe = info.get("trailingPE")
     if pe and pe < 25: score += weights["PE"]
@@ -132,49 +131,58 @@ def ai_score(df, info, kelly_f):
         rsi = float(df["RSI"].iloc[-1])
     except Exception:
         rsi = 50.0
-    if rsi < 30: score += 1 * weights["RSI"]
-    elif rsi > 70: score -= 1 * weights["RSI"]
+    if rsi < 30: score += weights["RSI"]
+    elif rsi > 70: score -= weights["RSI"]
     try:
         ma50 = float(df["MA50"].iloc[-1])
         ma200 = float(df["MA200"].iloc[-1])
         close = float(df["Close"].iloc[-1])
-        if close > ma50 > ma200: score += 1 * weights["MA"]
-        elif close < ma50 < ma200: score -= 1 * weights["MA"]
+        if close > ma50 > ma200: score += weights["MA"]
+        elif close < ma50 < ma200: score -= weights["MA"]
     except Exception:
         pass
     pe = info.get("trailingPE")
     if pe:
-        if pe < 15: score += 1 * weights["P/E"]
-        elif pe > 25: score -= 1 * weights["P/E"]
+        if pe < 15: score += weights["P/E"]
+        elif pe > 25: score -= weights["P/E"]
     high_52 = info.get("fiftyTwoWeekHigh")
     low_52 = info.get("fiftyTwoWeekLow")
-    if high_52 and close >= 0.9 * high_52: score -= 1 * weights["52w"]
-    if low_52 and close <= 1.1 * low_52: score += 1 * weights["52w"]
+    if high_52 and close >= 0.9 * high_52: score -= weights["52w"]
+    if low_52 and close <= 1.1 * low_52: score += weights["52w"]
     try:
         macd = float(df["MACD"].iloc[-1])
         signal = float(df["Signal"].iloc[-1])
-        if macd > signal: score += 1 * weights["MACD"]
-        elif macd < signal: score -= 1 * weights["MACD"]
+        if macd > signal: score += weights["MACD"]
+        elif macd < signal: score -= weights["MACD"]
     except Exception:
         pass
-    if kelly_f > 0.5: score += 1 * weights["Kelly"]
-    elif kelly_f < 0.1: score -= 1 * weights["Kelly"]
+    if kelly_f > 0.5: score += weights["Kelly"]
+    elif kelly_f < 0.1: score -= weights["Kelly"]
     return float(score)
 
 def recommendation_from_score(score):
-    if score >= 0.6: return "Strong Buy", "#2ECC71"
-    elif score >= 0.2: return "Buy", "#7CFC00"
-    elif score > -0.2: return "Hold", "#FFD400"
-    elif score > -0.6: return "Sell", "#FF7F50"
-    else: return "Strong Sell", "#FF4136"
+    # Finance-oriented subtle palette (dark green, navy/gold, burgundy)
+    if score >= 0.6:
+        return "Strong Buy", "#0B6E3A"  # dark green
+    elif score >= 0.2:
+        return "Buy", "#0F8A5F"
+    elif score > -0.2:
+        return "Hold", "#123A66"  # navy (use gold accent for text)
+    elif score > -0.6:
+        return "Sell", "#8B2E3A"  # burgundy
+    else:
+        return "Strong Sell", "#6A0E1A"
 
 def compute_risk_indicator(df):
     volatility = df['Close'].pct_change().std() * math.sqrt(252) if len(df) > 1 else 0.0
-    if volatility < 0.25: return "Low", "green"
-    elif volatility < 0.5: return "Medium", "yellow"
-    else: return "High", "red"
+    if volatility < 0.25:
+        return "Low", "#2ECC71"
+    elif volatility < 0.5:
+        return "Medium", "#FFD400"
+    else:
+        return "High", "#FF4136"
 
-# --- Fetch & process data (safe) ---
+# --- Fetch & process data ---
 data_dict, info_dict, ai_dict, forecast_dict, fund_dict, risk_dict = {}, {}, {}, {}, {}, {}
 
 for ticker in tickers:
@@ -208,16 +216,14 @@ if not data_dict:
 # --- Tabs ---
 tab1, tab2, tab3 = st.tabs(["Summary & Recommendations", "Price & Forecast", "Technical Indicators"])
 
-# --- Tab 1: Card Grid + Big Pie on right ---
+# --- Tab 1: cards + big pie ---
 with tab1:
     st.subheader("Stock Recommendations")
-    # Build left area (cards) and right area (global pie)
-    left_col, right_col = st.columns([2.3, 1])  # more space for cards
-    # Cards: two per row using chunking
-    cards = list(data_dict.keys())
+    left_col, right_col = st.columns([2.3, 1])
 
+    # Cards: two per row
+    cards = list(data_dict.keys())
     with left_col:
-        # iterate in pairs
         for i in range(0, len(cards), 2):
             cols = st.columns(2)
             for j in range(2):
@@ -236,57 +242,99 @@ with tab1:
                 day_change = close - prev_close
                 day_change_pct = (day_change / prev_close * 100) if prev_close != 0 else 0.0
                 rsi_val = df["RSI"].iloc[-1] if "RSI" in df.columns else None
-                analyst = info.get("recommendationKey") or info.get("recommendationMean") or info.get("recommendationNumerical") or info.get("averageAnalystRating") or None
+                # analyst consensus try common keys
+                analyst = info.get("recommendationKey") or info.get("recommendationMean") or info.get("averageAnalystRating") or None
 
-                # Card HTML
+                # Build card
                 with cols[j]:
                     st.markdown("<div class='stock-card'>", unsafe_allow_html=True)
-                    st.markdown(f"<h2 style='color:#FFFFFF'>{t}</h2>", unsafe_allow_html=True)
-                    st.markdown(f"<div class='rec' style='color:{rec_color}'>{rec_text}</div>", unsafe_allow_html=True)
-                    # metrics grid
+                    st.markdown(f"<h2>{t}</h2>", unsafe_allow_html=True)
+
+                    # Recommendation & risk badges (large)
+                    # For Hold, use navy background with gold text to differentiate
+                    if rec_text.lower().startswith("hold"):
+                        rec_style = f"background:#123A66; color:#FFD700"
+                    else:
+                        rec_style = f"background:{rec_color}; color:#FFFFFF"
+
+                    st.markdown(f"<div class='rec-badge' style='{('background:'+rec_color+'; color:#fff') if not rec_text.lower().startswith('hold') else rec_style}'>{rec_text}</div>", unsafe_allow_html=True)
+
+                    # risk badge
+                    risk_info = risk_dict.get(t, {})
+                    st.markdown(f"<span class='risk-badge' style='background:{risk_info.get('color','#777')}; color:#000'>{risk_info.get('text','N/A')}</span>", unsafe_allow_html=True)
+
+                    # Price / delta / Kelly / Fund score grid
                     st.markdown("<div class='metric-grid'>", unsafe_allow_html=True)
                     st.markdown(f"<div class='metric'><strong>Price</strong><div>${close:,.2f}</div></div>", unsafe_allow_html=True)
-                    st.markdown(f"<div class='metric'><strong>Day Δ</strong><div>{day_change:+.2f} ({day_change_pct:+.2f}%)</div></div>", unsafe_allow_html=True)
-                    st.markdown(f"<div class='metric'><strong>Kelly</strong><div>{ai.get('kelly', 0.0):.2f}</div></div>", unsafe_allow_html=True)
-                    st.markdown(f"<div class='metric'><strong>Fund Score</strong><div>{fund_dict.get(t, 0.0):.2f}</div></div>", unsafe_allow_html=True)
+                    # clearer delta with arrows
+                    if day_change >= 0:
+                        arrow = "▲"
+                        delta_class = "delta-up"
+                    else:
+                        arrow = "▼"
+                        delta_class = "delta-down"
+                    st.markdown(f"<div class='metric'><strong>Today Change</strong><div class='{delta_class}'>{arrow} {abs(day_change):.2f} ({day_change_pct:+.2f}%)</div></div>", unsafe_allow_html=True)
+                    st.markdown(f"<div class='metric'><strong>Kelly Criterion</strong><div>{ai.get('kelly',0.0):.2f}</div></div>", unsafe_allow_html=True)
+                    st.markdown(f"<div class='metric'><strong>Fund Score</strong><div>{fund_dict.get(t,0.0):.2f}</div></div>", unsafe_allow_html=True)
                     st.markdown("</div>", unsafe_allow_html=True)
 
-                    # RSI small chart and value
-                    try:
-                        rsi_series = df["RSI"].dropna()[-50:]
-                        if len(rsi_series) > 3:
-                            fig_rsi = go.Figure()
-                            fig_rsi.add_trace(go.Scatter(x=rsi_series.index, y=rsi_series.values, mode='lines', line=dict(color='#F5B041')))
-                            fig_rsi.update_layout(template='plotly_dark', margin=dict(l=0,r=0,t=10,b=10), height=90, xaxis=dict(visible=False))
-                            st.plotly_chart(fig_rsi, use_container_width=True)
-                        else:
-                            st.markdown(f"<div class='small-caption'>RSI: {rsi_val:.1f}</div>", unsafe_allow_html=True)
-                    except Exception:
-                        pass
-
-                    # Analyst consensus
+                    # Analyst consensus (bigger)
                     if show_analyst:
                         analyst_label = str(analyst) if analyst else "N/A"
-                        st.markdown(f"<div class='small-caption'>Analyst consensus: {analyst_label}</div>", unsafe_allow_html=True)
+                        st.markdown(f"<div class='analyst'>Analyst consensus: {analyst_label}</div>", unsafe_allow_html=True)
 
-                    # small risk tag and more
-                    risk_info = risk_dict.get(t, {})
-                    st.markdown(f"<div class='small-caption'>Risk: <span style='color:{risk_info.get('color','white')}'>{risk_info.get('text','N/A')}</span></div>", unsafe_allow_html=True)
-
-                    # separator
-                    st.markdown("<hr style='border:0.5px solid rgba(255,255,255,0.06)'/>", unsafe_allow_html=True)
-
-                    # quick bullets on indicators
+                    # Short summary sentence + 3 bullets (both)
+                    # Build summary from indicators
+                    summary_parts = []
+                    if "RSI" in df.columns:
+                        if df["RSI"].iloc[-1] > 70:
+                            summary_parts.append("Short-term overbought")
+                        elif df["RSI"].iloc[-1] < 30:
+                            summary_parts.append("Short-term oversold")
+                        else:
+                            summary_parts.append("RSI neutral")
                     try:
                         ma50 = df["MA50"].iloc[-1]
                         ma200 = df["MA200"].iloc[-1]
-                        ma_text = "Bullish" if ma50 > ma200 else "Bearish" if ma50 < ma200 else "Flat"
-                        st.markdown(f"**Trend (MA50 vs MA200):** {ma_text}", unsafe_allow_html=True)
+                        if ma50 > ma200:
+                            summary_parts.append("Trend bullish (MA50 > MA200)")
+                        elif ma50 < ma200:
+                            summary_parts.append("Trend bearish (MA50 < MA200)")
                     except Exception:
                         pass
+                    # create short summary
+                    short_summary = " / ".join(summary_parts[:2]) if summary_parts else "No short-term alerts"
+                    st.markdown(f"<div class='summary'>{short_summary}</div>", unsafe_allow_html=True)
+
+                    # Bullets
+                    bullets = []
+                    # bullet 1: RSI
+                    if "RSI" in df.columns:
+                        bullets.append(f"RSI: {df['RSI'].iloc[-1]:.1f}")
+                    # bullet 2: Analyst
+                    bullets.append(f"Analyst: {analyst_label}")
+                    # bullet 3: Kelly
+                    bullets.append(f"Kelly Criterion: {ai.get('kelly',0.0):.2f}")
+                    st.markdown("<ul class='bullets'>", unsafe_allow_html=True)
+                    for b in bullets:
+                        st.markdown(f"<li style='margin-bottom:4px'>{b}</li>", unsafe_allow_html=True)
+                    st.markdown("</ul>", unsafe_allow_html=True)
+
+                    # small RSI mini chart with label
+                    if "RSI" in df.columns:
+                        rsi_series = df["RSI"].dropna()[-60:]
+                        if len(rsi_series) > 3:
+                            fig_rsi = go.Figure()
+                            fig_rsi.add_trace(go.Scatter(x=rsi_series.index, y=rsi_series.values, mode='lines', line=dict(color='#F5B041'), name='RSI'))
+                            fig_rsi.update_layout(template='plotly_dark', margin=dict(l=0,r=0,t=20,b=10), height=100, xaxis=dict(visible=False), legend=dict(orientation='h', yanchor='bottom', y=1.02, xanchor='right', x=1))
+                            st.plotly_chart(fig_rsi, use_container_width=True)
+                            st.markdown("<div class='indicator-label'>Mini RSI (14) — overbought >70 / oversold <30</div>", unsafe_allow_html=True)
+                        else:
+                            st.markdown(f"<div class='small-caption'>RSI: {rsi_val:.1f}</div>", unsafe_allow_html=True)
+
                     st.markdown("</div>", unsafe_allow_html=True)
 
-    # Right column: global pie
+    # Right: pie chart
     with right_col:
         st.subheader("Portfolio Allocation Guidance")
         stocks_pct = portfolio_percent_invest * (risk_tolerance)
@@ -295,67 +343,64 @@ with tab1:
         cash_pct = 100 - (stocks_pct + bonds_pct + mutual_pct)
         pie_labels = ["Stocks", "Bonds", "Mutual Funds", "Cash"]
         pie_values = [stocks_pct, bonds_pct, mutual_pct, cash_pct]
-        # Stocks orange, Bonds grey, Mutual Funds blue, Cash green (darker tones)
         pie_colors = ["#D35400", "#7F8C8D", "#2980B9", "#27AE60"]
         fig_pie = go.Figure(data=[go.Pie(labels=pie_labels, values=pie_values,
                                          marker=dict(colors=pie_colors, line=dict(color='black', width=2)),
                                          textinfo='label+percent')])
         fig_pie.update_layout(template='plotly_dark', height=520,
-                              legend=dict(orientation="v", x=1.02, y=0.5, bgcolor='rgba(0,0,0,0)', bordercolor='rgba(255,255,255,0.1)', borderwidth=1),
+                              legend=dict(orientation="v", x=1.02, y=0.5, bgcolor='rgba(0,0,0,0)', bordercolor='rgba(255,255,255,0.08)', borderwidth=1),
                               margin=dict(l=10, r=10, t=10, b=10))
         st.plotly_chart(fig_pie, use_container_width=True)
 
-# --- Tab 2: Price & Forecast with Support Line and projection matching investment_horizon ---
+# --- Tab 2: Price & Forecast with clear legend/labels ---
 with tab2:
-    st.subheader("Price Chart, Forecast & Support Line")
+    st.subheader("Price Chart, Forecast & Support")
     for t in data_dict.keys():
         df = data_dict[t]
         future_dates, forecast = forecast_dict[t]
-        # support line: 20-day rolling low
         support_price = df['Close'].rolling(window=20, min_periods=1).min().iloc[-1]
         fig = go.Figure()
-        fig.add_trace(go.Scatter(x=df.index, y=df["Close"], mode='lines', name=f"{t} Close", line=dict(color='white')))
+        fig.add_trace(go.Scatter(x=df.index, y=df["Close"], mode='lines', name='Historical Close', line=dict(color='#FFFFFF', width=2)))
         if "MA50" in df.columns:
-            fig.add_trace(go.Scatter(x=df.index, y=df["MA50"], mode='lines', name="50-Day MA", line=dict(dash='dash', color='#F1C40F')))
+            fig.add_trace(go.Scatter(x=df.index, y=df["MA50"], mode='lines', name='50-Day MA', line=dict(dash='dash', color='#F1C40F')))
         if "MA200" in df.columns:
-            fig.add_trace(go.Scatter(x=df.index, y=df["MA200"], mode='lines', name="200-Day MA", line=dict(dash='dot', color='#D35400')))
-        # forecast projection over investment_horizon (already computed)
-        proj_x = future_dates
-        proj_y = forecast
-        fig.add_trace(go.Scatter(x=proj_x, y=proj_y, mode='lines', name=f"Forecast ({investment_horizon}d)", line=dict(color='#FF00FF')))
-        # support line across historical + projection range
-        full_x = list(df.index) + list(proj_x)
+            fig.add_trace(go.Scatter(x=df.index, y=df["MA200"], mode='lines', name='200-Day MA', line=dict(dash='dot', color='#D35400')))
+        # projection
+        fig.add_trace(go.Scatter(x=future_dates, y=forecast, mode='lines', name=f'Forecast ({investment_horizon}d)', line=dict(color='#FF00FF', width=2)))
+        # support line across history + forecast
+        full_x = list(df.index) + list(future_dates)
         full_support = [support_price] * len(full_x)
         fig.add_trace(go.Scatter(x=full_x, y=full_support, mode='lines', name='Support (20d low)', line=dict(color='#00FF7F', dash='dot')))
-        fig.update_layout(template='plotly_dark', height=520, title=f"{t} Price & {investment_horizon}-day Forecast", xaxis_title="Date", yaxis_title="Price (USD)")
+        fig.update_layout(template='plotly_dark', height=560, title=f"{t} — Historical Price & Forecast",
+                          xaxis_title="Date", yaxis_title="Price (USD)",
+                          legend=dict(orientation='h', yanchor='bottom', y=1.02, xanchor='right', x=1))
         st.plotly_chart(fig, use_container_width=True)
+        st.markdown("<div style='color:#BFC9D9; font-size:13px'>Legend: White = Historical Close | Yellow = 50-Day MA | Orange = 200-Day MA | Magenta = Forecast | Green dotted = Support (20-day low)</div>", unsafe_allow_html=True)
 
-# --- Tab 3: Technical Indicators with bright MACD and Signal colors ---
+# --- Tab 3: Technical indicators with bright MACD & Signal ---
 with tab3:
-    st.subheader("Technical Indicators: RSI & MACD")
+    st.subheader("Technical Indicators")
     for t in data_dict.keys():
         df = data_dict[t]
         st.write(f"### {t}")
         col1, col2 = st.columns([1,1])
         with col1:
-            # RSI
             if "RSI" in df.columns:
                 fig_rsi = go.Figure()
-                fig_rsi.add_trace(go.Scatter(x=df.index, y=df["RSI"], mode='lines', name='RSI', line=dict(color='#F5B041')))
-                fig_rsi.update_layout(template='plotly_dark', height=280, yaxis=dict(range=[0,100]), title="RSI (14)")
+                fig_rsi.add_trace(go.Scatter(x=df.index, y=df["RSI"], mode='lines', name='RSI', line=dict(color='#F5B041', width=2)))
+                fig_rsi.update_layout(template='plotly_dark', height=300, yaxis=dict(range=[0,100]), title="RSI (14)")
                 st.plotly_chart(fig_rsi, use_container_width=True)
                 st.caption("RSI indicates overbought (>70) or oversold (<30).")
             else:
                 st.write("RSI not available.")
 
         with col2:
-            # MACD & Signal both in bright colors
             if "MACD" in df.columns and "Signal" in df.columns:
                 fig_macd = go.Figure()
                 fig_macd.add_trace(go.Scatter(x=df.index, y=df["MACD"], mode='lines', name='MACD', line=dict(color='#FF00FF', width=2)))
                 fig_macd.add_trace(go.Scatter(x=df.index, y=df["Signal"], mode='lines', name='Signal', line=dict(color='#00FFFF', width=2)))
-                fig_macd.update_layout(template='plotly_dark', height=280, title="MACD & Signal")
+                fig_macd.update_layout(template='plotly_dark', height=300, title="MACD & Signal")
                 st.plotly_chart(fig_macd, use_container_width=True)
-                st.caption("MACD (magenta) and Signal (cyan). When MACD crosses above Signal it may indicate bullish momentum; crossing below may indicate bearish momentum.")
+                st.caption("MACD (magenta) and Signal (cyan). MACD crossing above Signal suggests bullish momentum; crossing below suggests bearish momentum.")
             else:
                 st.write("MACD/Signal not available.")
